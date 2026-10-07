@@ -1,7 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { AlertTriangle, ArrowRight, Music } from "lucide-react";
 
-// Siempre consulta en vivo: no cachear la lista de bandas.
+// Consulta siempre en vivo: no cachear la lista de bandas.
 export const dynamic = "force-dynamic";
 
 interface BandRow {
@@ -12,40 +12,42 @@ interface BandRow {
   genre?: string | null;
 }
 
-interface BandsResult {
-  bands: BandRow[];
-  error: string | null;
-}
+// Esto inicializa la conexión con mi base de datos.
+// Nota: createClient lanza "supabaseUrl is required" si no hay credenciales,
+// por eso solo se crea cuando existen (así el UI puede mostrar el error).
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+const supabase =
+  supabaseUrl && supabaseKey
+    ? createClient(supabaseUrl, supabaseKey)
+    : null;
 
-async function fetchBands(): Promise<BandsResult> {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-  // Excepción: credenciales ausentes.
-  if (!url || !key) {
-    return {
-      bands: [],
-      error:
-        "No se encontraron las credenciales de Supabase. Define NEXT_PUBLIC_SUPABASE_URL y NEXT_PUBLIC_SUPABASE_ANON_KEY en tu archivo .env.local.",
-    };
-  }
-
-  const supabase = createClient(url, key);
+// Con esta función se traen a las bandas al instante
+async function obtenerBandas() {
+  if (!supabase) return null;
   const { data, error } = await supabase.from("bands").select("*");
-
-  // Excepción: la consulta falló (red, permisos RLS, tabla inexistente, etc.).
-  if (error) {
-    return {
-      bands: [],
-      error: `Error al consultar Supabase: ${error.message}`,
-    };
-  }
-
-  return { bands: (data as BandRow[]) ?? [], error: null };
+  if (error) console.error("Error jalando bandas:", error);
+  console.log("Bandas listas para el UI:", data);
+  return data;
 }
 
 export default async function DiscoverPage() {
-  const { bands, error } = await fetchBands();
+  let bands: BandRow[] = [];
+  let error: string | null = null;
+
+  if (!supabaseUrl || !supabaseKey) {
+    error =
+      "No se encontraron las credenciales de Supabase. Define NEXT_PUBLIC_SUPABASE_URL y NEXT_PUBLIC_SUPABASE_ANON_KEY en tu archivo .env.local.";
+  } else {
+    try {
+      const data = await obtenerBandas();
+      bands = (data as BandRow[] | null) ?? [];
+    } catch (e) {
+      error = `Error al consultar Supabase: ${
+        e instanceof Error ? e.message : "conexión fallida"
+      }`;
+    }
+  }
 
   return (
     <main className="min-h-screen bg-ink px-5 py-10 sm:px-8">
